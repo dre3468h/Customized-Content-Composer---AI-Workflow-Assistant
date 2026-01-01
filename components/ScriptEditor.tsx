@@ -55,21 +55,24 @@ const ScriptEditor: React.FC<ScriptEditorProps> = ({ script, error, onUpdate, on
   };
 
   const handleExport = () => {
-    // Simple text export
-    let textContent = `# ${script.title}\n\n${script.subtitleOrDescription}\n\n`;
+    // Plain Text Export
+    let textContent = `${script.title}\n\n${script.subtitleOrDescription}\n\n`;
+    textContent += "========================================\n\n";
+    
     script.sections.forEach(s => {
-        textContent += `## ${s.title}\n\n${s.content}\n\n`;
-        if (s.visualPrompt) textContent += `[Visual: ${s.visualPrompt}]\n\n`;
+        textContent += `--- ${s.title} ---\n\n`;
+        if (s.visualPrompt) textContent += `[Visual: ${s.visualPrompt}]\n`;
+        textContent += `${s.content}\n\n`;
     });
     
     // Add Copyright
-    textContent += `\n\n---\n© ${new Date().getFullYear()} Kong Chun Yin. All Rights Reserved.`;
+    textContent += `\n\n========================================\n© ${new Date().getFullYear()} Kong Chun Yin. All Rights Reserved.`;
 
-    const blob = new Blob([textContent], { type: 'text/markdown' });
+    const blob = new Blob([textContent], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `script-${script.title.substring(0, 10)}.md`;
+    a.download = `script-${script.title.substring(0, 10)}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -87,7 +90,7 @@ const ScriptEditor: React.FC<ScriptEditorProps> = ({ script, error, onUpdate, on
            <div className="flex gap-3">
              <button onClick={handleExport} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-sm flex items-center gap-2">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                {t.editor.export}
+                {t.editor.export} (.txt)
              </button>
              <button onClick={onConfirm} className="px-6 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg font-bold shadow-lg shadow-green-600/20 flex items-center gap-2">
               <span>{t.editor.proceed}</span>
