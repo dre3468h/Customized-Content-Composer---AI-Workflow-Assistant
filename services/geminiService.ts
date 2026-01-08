@@ -1,6 +1,18 @@
 import { GoogleGenAI, Type, Modality, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { NewsTopic, GeneratedScript, GeminiModel, ScriptConfiguration, Slide } from "../types";
 
+// Helper to get API Key (Env or LocalStorage)
+const getApiKey = (): string => {
+  // 1. Check process.env (for dev/build time injection)
+  if (process.env.API_KEY) return process.env.API_KEY;
+  
+  // 2. Check LocalStorage (for deployed usage)
+  const stored = localStorage.getItem("gemini_api_key");
+  if (stored) return stored;
+
+  throw new Error("API Key missing");
+};
+
 // ... (previous helper functions: base64ToWavBlob, writeString, cleanJsonString, SAFETY_SETTINGS) ...
 // Helper: Convert Base64 PCM to WAV Blob
 function base64ToWavBlob(base64: string, sampleRate: number = 24000): Blob {
@@ -77,7 +89,7 @@ const SAFETY_SETTINGS = [
 ];
 
 export const discoverTopics = async (category: string = 'General'): Promise<NewsTopic[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
   
   const prompt = `
     You are a Content Strategist. 
@@ -142,7 +154,7 @@ export const discoverTopics = async (category: string = 'General'): Promise<News
 };
 
 export const generateScript = async (topic: NewsTopic, config: ScriptConfiguration): Promise<GeneratedScript> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
   
   const isVideo = config.format === 'Video Script';
   
@@ -244,7 +256,7 @@ export const generateScript = async (topic: NewsTopic, config: ScriptConfigurati
 };
 
 export const generateThumbnail = async (title: string, context: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
   
   const prompt = `Create a cover image/thumbnail for a content piece titled "${title}". 
   Context: ${context}. 
@@ -266,7 +278,7 @@ export const generateThumbnail = async (title: string, context: string): Promise
 };
 
 export const generateIntroOverview = async (script: GeneratedScript): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
   
   const summaryPrompt = `
     Based on the following content, write a compelling 30-40 second spoken introductory overview.
@@ -304,7 +316,7 @@ export const generateIntroOverview = async (script: GeneratedScript): Promise<st
 };
 
 export const generateSlideDeck = async (script: GeneratedScript): Promise<Slide[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
   
   const prompt = `
     Based on the script provided, create a presentation slide deck structure (5-8 slides).
@@ -349,7 +361,7 @@ export const generateSlideDeck = async (script: GeneratedScript): Promise<Slide[
 };
 
 export const generateFormattedDocument = async (script: GeneratedScript): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
   
   // Generating an HTML structure that can be saved as .doc
   const prompt = `

@@ -7,6 +7,14 @@ import { discoverTopics, generateScript, generateThumbnail, generateIntroOvervie
 import { NewsTopic, GeneratedScript, ProjectState, ScriptConfiguration, HistoryItem } from './types';
 import { translations, Translations } from './locales';
 
+// Type definition for AI Studio environment
+declare global {
+  interface AIStudio {
+    hasSelectedApiKey(): Promise<boolean>;
+    openSelectKey(): Promise<void>;
+  }
+}
+
 // Icons
 const Icons = {
   Search: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>,
@@ -15,15 +23,19 @@ const Icons = {
   Assets: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>,
   Check: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>,
   History: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+  Menu: () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>,
+  Close: () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
 };
 
 const STEPS_ORDER = ['discovery', 'configuration', 'scripting', 'assets'];
 
 const App: React.FC = () => {
   const [hasKey, setHasKey] = useState<boolean>(false);
+  const [manualKey, setManualKey] = useState("");
   const [topics, setTopics] = useState<NewsTopic[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [uiLang, setUiLang] = useState<'en' | 'zh'>('en');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   const t: Translations = translations[uiLang];
 
@@ -45,11 +57,20 @@ const App: React.FC = () => {
   useEffect(() => {
     const checkKey = async () => {
       let keyExists = false;
+      
+      // 1. Check for AI Studio environment (Google IDX)
       if (window.aistudio) {
         keyExists = await window.aistudio.hasSelectedApiKey();
-      } else if (process.env.API_KEY && process.env.API_KEY.length > 0) {
+      } 
+      // 2. Check for process.env (Local Dev)
+      else if (process.env.API_KEY && process.env.API_KEY.length > 0) {
         keyExists = true;
       }
+      // 3. Check LocalStorage (Deployed Web App)
+      else if (localStorage.getItem("gemini_api_key")) {
+        keyExists = true;
+      }
+
       if (keyExists) {
         setHasKey(true);
         setState(prev => ({ ...prev, step: 'discovery', furthestStepReached: 'discovery' }));
@@ -110,6 +131,7 @@ const App: React.FC = () => {
       progress: 100,
       furthestStepReached: 'assets' // Unlock all steps
     });
+    setIsSidebarOpen(false); // Close sidebar on mobile after selection
   };
 
   const updateStep = (newStep: ProjectState['step']) => {
@@ -131,11 +153,23 @@ const App: React.FC = () => {
         setHasKey(true);
         updateStep('discovery');
       } else {
-        alert("AI Studio environment not detected. Check API_KEY.");
+        // Fallback for web: Just assume if they clicked start, they might want to enter manual key
+        // The UI below handles the input field for manual entry
       }
     } catch (e) {
       console.error(e);
       alert("Selection failed.");
+    }
+  };
+  
+  const handleManualKeySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if(manualKey.trim().length > 10) {
+      localStorage.setItem("gemini_api_key", manualKey.trim());
+      setHasKey(true);
+      updateStep('discovery');
+    } else {
+      alert("Please enter a valid API key.");
     }
   };
 
@@ -147,7 +181,9 @@ const App: React.FC = () => {
     } catch (err) {
       console.error(err);
       if (err instanceof Error && err.message.includes("Requested entity was not found")) {
+        // If key invalid, reset
         setHasKey(false);
+        localStorage.removeItem("gemini_api_key");
         setState(prev => ({ ...prev, step: 'api_key' }));
       }
     } finally {
@@ -268,6 +304,7 @@ const App: React.FC = () => {
     const maxIdx = STEPS_ORDER.indexOf(state.furthestStepReached);
     if (targetIdx <= maxIdx) {
         setState(prev => ({ ...prev, step: targetStep }));
+        setIsSidebarOpen(false); // Close sidebar on mobile on nav click
     }
   };
 
@@ -284,13 +321,37 @@ const App: React.FC = () => {
         <div className="bg-gray-800 p-8 rounded-xl max-w-md w-full border border-gray-700 shadow-2xl text-center">
           <h1 className="text-3xl font-bold mb-2 bg-clip-text text-transparent bg-gradient-to-r from-brand-500 to-indigo-400">{t.sidebar.title}</h1>
           <p className="text-gray-400 mb-8">{t.sidebar.subtitle}</p>
-          <button 
-            onClick={handleKeySelection}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg transition-all"
-          >
-            Start Project (Select Key)
-          </button>
-          <p className="text-xs text-gray-500 mt-4"><a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="underline">Billing Required</a> for Advanced Models</p>
+          
+          {/* Conditional Rendering based on Environment */}
+          {window.aistudio ? (
+            <button 
+              onClick={handleKeySelection}
+              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg transition-all"
+            >
+              Start Project (Select Key)
+            </button>
+          ) : (
+            <form onSubmit={handleManualKeySubmit} className="space-y-4">
+              <div>
+                <input 
+                  type="password"
+                  value={manualKey}
+                  onChange={(e) => setManualKey(e.target.value)}
+                  placeholder="Enter Gemini API Key..."
+                  className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-white outline-none focus:border-indigo-500"
+                />
+              </div>
+              <button 
+                type="submit"
+                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg transition-all"
+              >
+                Save & Start Project
+              </button>
+              <p className="text-xs text-gray-500">Your key is stored locally in your browser.</p>
+            </form>
+          )}
+
+          <p className="text-xs text-gray-500 mt-4"><a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="underline">Get an API Key</a></p>
         </div>
       </div>
     );
@@ -298,8 +359,27 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-gray-900 text-white overflow-hidden">
+      {/* Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm transition-opacity"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <div className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col flex-shrink-0">
+      <aside className={`
+        fixed inset-y-0 left-0 z-50 w-64 bg-gray-800 border-r border-gray-700 flex flex-col flex-shrink-0 transition-transform duration-300 ease-in-out
+        md:relative md:translate-x-0 shadow-2xl md:shadow-none
+        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}>
+        {/* Mobile Close Button */}
+        <div className="md:hidden absolute top-4 right-4 z-50">
+           <button onClick={() => setIsSidebarOpen(false)} className="text-gray-400 hover:text-white p-2">
+              <Icons.Close />
+           </button>
+        </div>
+
         <div className="p-6 border-b border-gray-700">
           <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-brand-500 to-indigo-400">
             {t.sidebar.title}
@@ -378,23 +458,34 @@ const App: React.FC = () => {
         <div className="p-4 text-xs text-gray-500 border-t border-gray-800 text-center whitespace-pre-wrap">
             {t.sidebar.copyright}
         </div>
-      </div>
+      </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-hidden flex flex-col relative">
-        {/* Language Selector */}
-        <div className="absolute top-6 right-8 z-50">
+      <main className="flex-1 overflow-hidden flex flex-col relative w-full bg-gray-900">
+        
+        {/* Mobile Header */}
+        <div className="md:hidden flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700 shrink-0 shadow-md z-20">
+           <button onClick={() => setIsSidebarOpen(true)} className="text-gray-300 hover:text-white p-1">
+              <Icons.Menu />
+           </button>
+           <span className="font-bold text-lg text-white truncate px-2">{t.sidebar.title}</span>
+           {/* Spacer for layout balance */}
+           <div className="w-8"></div>
+        </div>
+
+        {/* Language Selector - Positioned for both mobile (top right in content) and desktop (top right absolute) */}
+        <div className="absolute top-3 right-3 md:top-6 md:right-8 z-30">
           <select 
             value={uiLang} 
             onChange={(e) => setUiLang(e.target.value as any)}
-            className="bg-gray-800 text-xs text-gray-300 border border-gray-600 rounded-md px-2 py-1 outline-none focus:border-indigo-500"
+            className="bg-gray-800 text-xs text-gray-300 border border-gray-600 rounded-md px-2 py-1.5 outline-none focus:border-indigo-500 shadow-lg"
           >
             <option value="en">English (UI)</option>
             <option value="zh">繁體中文 (介面)</option>
           </select>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-8 relative">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 relative scroll-smooth">
           
           {state.step === 'discovery' && (
             <TopicSelector 
